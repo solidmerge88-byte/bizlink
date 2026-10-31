@@ -1,1 +1,11 @@
-import AppShell from '@/components/AppShell';import Link from 'next/link';export default function Page(){return <AppShell><div className="eyebrow">Your next chapter</div><h2>BIZLINK CONNECT <span className="accent">✦</span></h2><div className="glass"><p className="lead">Discover collaborators, founders, opportunities and business communities.</p><p className="muted">This section is a planned feature. The first build focuses on secure accounts and personalized dashboards.</p><Link href="/dashboard" className="btn alt">← Back to dashboard</Link></div></AppShell>}
+
+import AppShell from '@/components/AppShell'
+import ConnectHub from '@/components/ConnectHub'
+
+export default function Page() {
+  return (
+    <AppShell>
+      <ConnectHub />
+    </AppShell>
+  )
+}
