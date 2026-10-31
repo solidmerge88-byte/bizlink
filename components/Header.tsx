@@ -1,0 +1,2 @@
+import Link from 'next/link'
+export default function Header(){return <header className="nav"><Link href="/" className="brand">BIZ<span>LINK</span> ✦</Link><nav className="navlinks"><Link href="/connect">Connect</Link><Link href="/study">Study</Link><Link href="/meetups">Meetups</Link><Link href="/live">Live</Link><Link href="/login">Log in</Link><Link className="btn" href="/signup">Join now ↗</Link></nav></header>}
