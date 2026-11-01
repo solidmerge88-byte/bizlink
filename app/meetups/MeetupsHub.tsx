@@ -2,6 +2,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
@@ -17,6 +18,16 @@ type Meetup = {
   ends_at: string
   max_attendees: number
   status: 'scheduled' | 'cancelled'
+}
+
+type Registration = {
+  id: string
+  meetup_id: string
+}
+
+type AttendeeCount = {
+  meetup_id: string
+  attendee_count: number
 }
 
 const categories = [
@@ -50,8 +61,14 @@ export default function MeetupsHub() {
 
   const [userId, setUserId] = useState<string | null>(null)
   const [meetups, setMeetups] = useState<Meetup[]>([])
+  const [registrations, setRegistrations] = useState<Registration[]>([])
+  const [attendeeCounts, setAttendeeCounts] = useState<
+    Record<string, number>
+  >({})
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [busyMeetupId, setBusyMeetupId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
@@ -62,6 +79,7 @@ export default function MeetupsHub() {
     'online' | 'in_person'
   >('online')
   const [location, setLocation] = useState('')
+
   const [startsAt, setStartsAt] = useState(
     () => localDateTime(new Date(Date.now() + 86400000))
   )
@@ -73,44 +91,79 @@ export default function MeetupsHub() {
   const loadMeetups = useCallback(async () => {
     setLoading(true)
 
-    const { data, error: loadError } = await supabase
-      .from('meetups')
-      .select(
-        'id, host_id, title, description, category, meeting_type, location, starts_at, ends_at, max_attendees, status'
-      )
-      .eq('status', 'scheduled')
-      .gte('ends_at', new Date().toISOString())
-      .order('starts_at', { ascending: true })
+    const { data: authData, error: authError } =
+      await supabase.auth.getUser()
 
-    if (loadError) {
-      setError(loadError.message)
+    if (authError || !authData.user) {
+      setError('Please sign in to use BIZLINK MEETUPS.')
+      setLoading(false)
+      return
+    }
+
+    const currentUserId = authData.user.id
+    setUserId(currentUserId)
+
+    const [meetupsResult, registrationsResult, countsResult] =
+      await Promise.all([
+        supabase
+          .from('meetups')
+          .select(
+            'id, host_id, title, description, category, meeting_type, location, starts_at, ends_at, max_attendees, status'
+          )
+          .eq('status', 'scheduled')
+          .gte('ends_at', new Date().toISOString())
+          .order('starts_at', { ascending: true }),
+
+        supabase
+          .from('meetup_attendees')
+          .select('id, meetup_id')
+          .eq('user_id', currentUserId),
+
+        supabase.rpc('get_meetup_attendee_counts'),
+      ])
+
+    let firstError = ''
+
+    if (meetupsResult.error) {
+      firstError = meetupsResult.error.message
     } else {
-      setMeetups((data ?? []) as Meetup[])
+      setMeetups((meetupsResult.data ?? []) as Meetup[])
+    }
+
+    if (registrationsResult.error) {
+      firstError ||= registrationsResult.error.message
+    } else {
+      setRegistrations(
+        (registrationsResult.data ?? []) as Registration[]
+      )
+    }
+
+    if (countsResult.error) {
+      firstError ||= countsResult.error.message
+    } else {
+      const counts: Record<string, number> = {}
+
+      for (const item of
+        (countsResult.data ?? []) as AttendeeCount[]) {
+        counts[item.meetup_id] = Number(item.attendee_count)
+      }
+
+      setAttendeeCounts(counts)
+    }
+
+    if (firstError) {
+      setError(firstError)
     }
 
     setLoading(false)
   }, [supabase])
 
   useEffect(() => {
-    async function initialize() {
-      const { data, error: authError } =
-        await supabase.auth.getUser()
-
-      if (authError || !data.user) {
-        setError('Please sign in to use BIZLINK MEETUPS.')
-        setLoading(false)
-        return
-      }
-
-      setUserId(data.user.id)
-      await loadMeetups()
-    }
-
-    void initialize()
-  }, [supabase, loadMeetups])
+    void loadMeetups()
+  }, [loadMeetups])
 
   async function createMeetup(
-    event: React.FormEvent<HTMLFormElement>
+    event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault()
     setError('')
@@ -139,12 +192,18 @@ export default function MeetupsHub() {
       return
     }
 
-    if (title.trim().length < 3 || title.trim().length > 120) {
+    if (
+      title.trim().length < 3 ||
+      title.trim().length > 120
+    ) {
       setError('Meeting titles must be 3 to 120 characters.')
       return
     }
 
-    if (meetingType === 'in_person' && !location.trim()) {
+    if (
+      meetingType === 'in_person' &&
+      !location.trim()
+    ) {
       setError('Please enter a meeting location.')
       return
     }
@@ -200,6 +259,74 @@ export default function MeetupsHub() {
     setSaving(false)
   }
 
+  async function joinMeetup(meetupId: string) {
+    if (!userId || busyMeetupId) return
+
+    setBusyMeetupId(meetupId)
+    setError('')
+    setMessage('')
+
+    const { data: authData, error: authError } =
+      await supabase.auth.getUser()
+
+    if (authError || !authData.user) {
+      setError('Please sign in again.')
+      setBusyMeetupId(null)
+      return
+    }
+
+    const { error: joinError } = await supabase
+      .from('meetup_attendees')
+      .insert({
+        meetup_id: meetupId,
+        user_id: authData.user.id,
+      })
+
+    if (joinError) {
+      setError(joinError.message)
+    } else {
+      await loadMeetups()
+      setMessage('You have successfully joined the meetup!')
+    }
+
+    setBusyMeetupId(null)
+  }
+
+  async function leaveMeetup(meetupId: string) {
+    if (!userId || busyMeetupId) return
+
+    setBusyMeetupId(meetupId)
+    setError('')
+    setMessage('')
+
+    const { data: authData, error: authError } =
+      await supabase.auth.getUser()
+
+    if (authError || !authData.user) {
+      setError('Please sign in again.')
+      setBusyMeetupId(null)
+      return
+    }
+
+    const { data, error: leaveError } = await supabase
+      .from('meetup_attendees')
+      .delete()
+      .eq('meetup_id', meetupId)
+      .eq('user_id', authData.user.id)
+      .select('id')
+
+    if (leaveError) {
+      setError(leaveError.message)
+    } else if (!data || data.length === 0) {
+      setError('Your registration was not found.')
+    } else {
+      await loadMeetups()
+      setMessage('You have left the meetup.')
+    }
+
+    setBusyMeetupId(null)
+  }
+
   return (
     <div>
       <div className="eyebrow">
@@ -211,9 +338,29 @@ export default function MeetupsHub() {
       </h2>
 
       <p className="lead">
-        Host business conversations, discover upcoming events,
-        and meet people who share your ambitions.
+        Host business conversations, discover upcoming
+        events, and connect with ambitious people.
       </p>
+
+      {message && (
+        <div
+          className="notice"
+          role="status"
+          style={{ marginBottom: 20 }}
+        >
+          ✓ {message}
+        </div>
+      )}
+
+      {error && (
+        <div
+          className="notice"
+          role="alert"
+          style={{ marginBottom: 20 }}
+        >
+          {error}
+        </div>
+      )}
 
       <section
         className="glass"
@@ -224,37 +371,34 @@ export default function MeetupsHub() {
 
         <p className="muted">
           Schedule a meeting for the BIZLINK community.
-          Online meeting rooms and reminders will be
-          added in upcoming steps.
+          Live video rooms and reminders are coming later.
         </p>
-
-        {message && (
-          <div className="notice" role="status">
-            {message}
-          </div>
-        )}
-
-        {error && (
-          <div className="notice" role="alert">
-            {error}
-          </div>
-        )}
 
         <form
           onSubmit={createMeetup}
-          style={{ display: 'grid', gap: 16, marginTop: 20 }}
+          style={{
+            display: 'grid',
+            gap: 16,
+            marginTop: 20,
+          }}
         >
           <label>
             <strong>Meeting Title</strong>
             <input
               type="text"
               value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="e.g. Young Entrepreneurs Networking"
+              onChange={(event) =>
+                setTitle(event.target.value)
+              }
+              placeholder="e.g. Entrepreneurs Networking"
               minLength={3}
               maxLength={120}
               required
-              style={{ width: '100%', padding: 14, marginTop: 8 }}
+              style={{
+                width: '100%',
+                padding: 14,
+                marginTop: 8,
+              }}
             />
           </label>
 
@@ -265,10 +409,14 @@ export default function MeetupsHub() {
               onChange={(event) =>
                 setDescription(event.target.value)
               }
-              placeholder="What will members discuss or learn?"
+              placeholder="What will members discuss?"
               rows={4}
               maxLength={3000}
-              style={{ width: '100%', padding: 14, marginTop: 8 }}
+              style={{
+                width: '100%',
+                padding: 14,
+                marginTop: 8,
+              }}
             />
           </label>
 
@@ -279,7 +427,11 @@ export default function MeetupsHub() {
               onChange={(event) =>
                 setCategory(event.target.value)
               }
-              style={{ width: '100%', padding: 14, marginTop: 8 }}
+              style={{
+                width: '100%',
+                padding: 14,
+                marginTop: 8,
+              }}
             >
               {categories.map((item) => (
                 <option key={item} value={item}>
@@ -295,13 +447,22 @@ export default function MeetupsHub() {
               value={meetingType}
               onChange={(event) =>
                 setMeetingType(
-                  event.target.value as 'online' | 'in_person'
+                  event.target.value as
+                    'online' | 'in_person'
                 )
               }
-              style={{ width: '100%', padding: 14, marginTop: 8 }}
+              style={{
+                width: '100%',
+                padding: 14,
+                marginTop: 8,
+              }}
             >
-              <option value="online">Online</option>
-              <option value="in_person">In Person</option>
+              <option value="online">
+                Online
+              </option>
+              <option value="in_person">
+                In Person
+              </option>
             </select>
           </label>
 
@@ -316,7 +477,11 @@ export default function MeetupsHub() {
                 }
                 placeholder="e.g. Gaborone, Botswana"
                 required
-                style={{ width: '100%', padding: 14, marginTop: 8 }}
+                style={{
+                  width: '100%',
+                  padding: 14,
+                  marginTop: 8,
+                }}
               />
             </label>
           )}
@@ -373,10 +538,16 @@ export default function MeetupsHub() {
               step={1}
               value={maxAttendees}
               onChange={(event) =>
-                setMaxAttendees(Number(event.target.value))
+                setMaxAttendees(
+                  Number(event.target.value)
+                )
               }
               required
-              style={{ width: '100%', padding: 14, marginTop: 8 }}
+              style={{
+                width: '100%',
+                padding: 14,
+                marginTop: 8,
+              }}
             />
           </label>
 
@@ -385,72 +556,156 @@ export default function MeetupsHub() {
             className="btn"
             disabled={saving || !userId}
           >
-            {saving ? 'Creating Meetup...' : '+ Create Meetup'}
+            {saving
+              ? 'Creating Meetup...'
+              : '+ Create Meetup'}
           </button>
         </form>
       </section>
 
       <section>
-        <div className="eyebrow">BIZLINK COMMUNITY</div>
+        <div className="eyebrow">
+          BIZLINK COMMUNITY
+        </div>
+
         <h3>Upcoming Meetups</h3>
 
         <p className="muted">
-          Explore meetings created by BIZLINK members.
+          Discover events and reserve your place.
         </p>
 
         {loading && (
-          <p className="muted">Loading meetups...</p>
+          <p className="muted">
+            Loading meetups...
+          </p>
         )}
 
         {!loading && meetups.length === 0 && (
           <div className="notice">
-            No upcoming meetups yet. Be the first to create one!
+            No upcoming meetups yet.
+            Be the first to create one!
           </div>
         )}
 
         <div className="dashboard-grid">
-          {meetups.map((meetup) => (
-            <article className="card" key={meetup.id}>
-              <div className="eyebrow">
-                {meetup.category}
-              </div>
+          {meetups.map((meetup) => {
+            const isHost = meetup.host_id === userId
 
-              <h3>{meetup.title}</h3>
+            const isJoined = registrations.some(
+              (registration) =>
+                registration.meetup_id === meetup.id
+            )
 
-              <p className="muted">
-                {meetup.meeting_type === 'online'
-                  ? '🌐 Online Meetup'
-                  : `📍 ${meetup.location || 'In Person'}`}
-              </p>
+            const attendeeCount =
+              attendeeCounts[meetup.id] ?? 1
 
-              <p>{meetup.description}</p>
+            const isFull =
+              attendeeCount >= meetup.max_attendees
 
-              <p>
-                <strong>Starts:</strong>{' '}
-                {formatDate(meetup.starts_at)}
-              </p>
+            const registrationClosed =
+              new Date(meetup.starts_at).getTime() <=
+              Date.now()
 
-              <p>
-                <strong>Ends:</strong>{' '}
-                {formatDate(meetup.ends_at)}
-              </p>
-
-              <p className="muted">
-                Maximum attendees: {meetup.max_attendees}
-              </p>
-
-              {meetup.host_id === userId && (
-                <div className="notice">
-                  ✓ You are hosting this meetup
+            return (
+              <article
+                className="card"
+                key={meetup.id}
+              >
+                <div className="eyebrow">
+                  {meetup.category}
                 </div>
-              )}
-            </article>
-          ))}
+
+                <h3>{meetup.title}</h3>
+
+                <p className="muted">
+                  {meetup.meeting_type === 'online'
+                    ? '🌐 Online Meetup'
+                    : `📍 ${meetup.location || 'In Person'}`}
+                </p>
+
+                {meetup.description && (
+                  <p>{meetup.description}</p>
+                )}
+
+                <p>
+                  <strong>Starts:</strong>{' '}
+                  {formatDate(meetup.starts_at)}
+                </p>
+
+                <p>
+                  <strong>Ends:</strong>{' '}
+                  {formatDate(meetup.ends_at)}
+                </p>
+
+                <p>
+                  <strong>Attendees:</strong>{' '}
+                  {attendeeCount} / {meetup.max_attendees}
+                </p>
+
+                {isHost ? (
+                  <div className="notice">
+                    ✓ You are hosting this meetup
+                  </div>
+                ) : isJoined ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 12,
+                      marginTop: 16,
+                    }}
+                  >
+                    <div className="notice">
+                      ✓ You have joined this meetup
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn alt"
+                      disabled={busyMeetupId !== null}
+                      onClick={() =>
+                        leaveMeetup(meetup.id)
+                      }
+                    >
+                      {busyMeetupId === meetup.id
+                        ? 'Processing...'
+                        : 'Leave Meetup'}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 16 }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={
+                        busyMeetupId !== null ||
+                        isFull ||
+                        registrationClosed
+                      }
+                      onClick={() =>
+                        joinMeetup(meetup.id)
+                      }
+                    >
+                      {busyMeetupId === meetup.id
+                        ? 'Joining...'
+                        : registrationClosed
+                        ? 'Registration Closed'
+                        : isFull
+                        ? 'Meetup Full'
+                        : '+ Join Meetup'}
+                    </button>
+                  </div>
+                )}
+              </article>
+            )
+          })}
         </div>
       </section>
 
       <div style={{ marginTop: 32 }}>
-        <Link href="/dashboard" className="btn alt">
+        <Link
+          href="/dashboard"
+          className="btn alt"
+        >
           ← Back to Dashboard
         </Link>
       </div>
