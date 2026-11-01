@@ -1,6 +1,6 @@
 
 import AppShell from '@/components/AppShell'
-import ConnectHub from '@/components/ConnectHub'
+import ConnectHub from './ConnectHub'
 
 export default function Page() {
   return (
@@ -9,3 +9,4 @@ export default function Page() {
     </AppShell>
   )
 }
+
