@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import ProfileEditor from './ProfileEditor'
 import ProfessionalDirectory from './ProfessionalDirectory'
+import ConnectionInbox from './ConnectionInbox'
 
 const opportunities = [
   {
@@ -204,6 +205,8 @@ export default function ConnectHub() {
       )}
 
       <ProfessionalDirectory />
+
+      <ConnectionInbox />
 
       <ProfileEditor />
 
