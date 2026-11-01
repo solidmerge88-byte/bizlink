@@ -1,7 +1,7 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type Profile = {
@@ -10,6 +10,7 @@ type Profile = {
   bio: string | null
   skills: string | null
   location: string | null
+  is_public: boolean
 }
 
 export default function ProfileEditor() {
@@ -25,6 +26,7 @@ export default function ProfileEditor() {
     bio: '',
     skills: '',
     location: '',
+    is_public: false,
   })
 
   useEffect(() => {
@@ -43,7 +45,9 @@ export default function ProfileEditor() {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('display_name, headline, bio, skills, location')
+        .select(
+          'display_name, headline, bio, skills, location, is_public'
+        )
         .eq('id', id)
         .single()
 
@@ -56,6 +60,7 @@ export default function ProfileEditor() {
           bio: data.bio ?? '',
           skills: data.skills ?? '',
           location: data.location ?? '',
+          is_public: data.is_public ?? false,
         })
       }
 
@@ -65,14 +70,17 @@ export default function ProfileEditor() {
     void loadProfile()
   }, [supabase])
 
-  function updateField(field: keyof Profile, value: string) {
+  function updateField(
+    field: 'display_name' | 'headline' | 'bio' | 'skills' | 'location',
+    value: string
+  ) {
     setProfile((previous) => ({
       ...previous,
       [field]: value,
     }))
   }
 
-  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!userId || saving) return
@@ -89,7 +97,7 @@ export default function ProfileEditor() {
       return
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update({
         display_name: profile.display_name,
@@ -97,11 +105,18 @@ export default function ProfileEditor() {
         bio: profile.bio,
         skills: profile.skills,
         location: profile.location,
+        is_public: profile.is_public,
       })
       .eq('id', userId)
+      .select('id')
+      .single()
 
-    if (error) {
-      setMessage(`Unable to save profile: ${error.message}`)
+    if (error || !data) {
+      setMessage(
+        `Unable to save profile: ${
+          error?.message ?? 'Profile update was not confirmed.'
+        }`
+      )
     } else {
       setMessage('Profile saved successfully!')
     }
@@ -196,6 +211,34 @@ export default function ProfileEditor() {
               style={{ width: '100%', padding: 12, marginTop: 8 }}
             />
           </label>
+
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              cursor: 'pointer',
+              marginTop: 8,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={profile.is_public}
+              onChange={(event) =>
+                setProfile((previous) => ({
+                  ...previous,
+                  is_public: event.target.checked,
+                }))
+              }
+            />
+            Show my professional profile in Discover Professionals
+          </label>
+
+          <p className="muted" style={{ margin: 0 }}>
+            Your profile is private by default. Enable this option
+            if you want other BIZLINK members to discover your
+            professional profile once the directory is available.
+          </p>
         </div>
 
         <button
