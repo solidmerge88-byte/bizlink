@@ -17,24 +17,28 @@ const modules = [
     desc: 'Explore learning resources and build your knowledge.',
     href: '/study',
     icon: GraduationCap,
+    status: 'Explore Learning',
   },
   {
     title: 'BIZLINK CONNECT',
     desc: 'Discover opportunities and grow your network.',
     href: '/connect',
     icon: BriefcaseBusiness,
+    status: 'Grow Your Network',
   },
   {
     title: 'BIZLINK MEETUPS',
-    desc: 'Your future space for collaboration and meetings.',
+    desc: 'Create business meetups, schedule meetings, and discover upcoming events.',
     href: '/meetups',
     icon: Video,
+    status: 'Create or Explore Meetups',
   },
   {
     title: 'BIZLINK LIVE',
     desc: 'A space for creators and talent to shine.',
     href: '/live',
     icon: Radio,
+    status: 'Explore Live',
   },
 ]
 
@@ -59,7 +63,9 @@ export default async function Page() {
 
   return (
     <AppShell>
-      <div className="eyebrow">WELCOME TO YOUR UNIVERSE</div>
+      <div className="eyebrow">
+        WELCOME TO YOUR UNIVERSE
+      </div>
 
       <h2>
         Welcome back, {profile?.display_name || 'Explorer'}
@@ -79,17 +85,47 @@ export default async function Page() {
       )}
 
       <div className="dashboard-grid">
-        {modules.map(({ title, desc, href, icon: Icon }) => (
-          <Link href={href} className="card" key={title}>
+        {modules.map(({ title, desc, href, icon: Icon, status }) => (
+          <Link
+            href={href}
+            className="card"
+            key={title}
+            style={
+              href === '/meetups'
+                ? {
+                    border: '1px solid #a78bfa',
+                    boxShadow: '0 0 22px rgba(167,139,250,0.12)',
+                  }
+                : undefined
+            }
+          >
             <span className="iconbox">
               <Icon />
             </span>
 
             <h3>{title}</h3>
+
+            {href === '/meetups' && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  padding: '6px 12px',
+                  borderRadius: 20,
+                  background: 'rgba(167,139,250,0.15)',
+                  color: '#a78bfa',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  marginBottom: 10,
+                }}
+              >
+                NEW FEATURE
+              </span>
+            )}
+
             <p className="muted">{desc}</p>
 
             <span className="accent">
-              Explore <ArrowRight size={16} />
+              {status} <ArrowRight size={16} />
             </span>
           </Link>
         ))}
@@ -98,6 +134,7 @@ export default async function Page() {
       <div className="card" style={{ marginTop: 24 }}>
         <div className="eyebrow">YOUR NEXT CHAPTER</div>
         <h3>Make your mark on BIZLINK</h3>
+
         <p className="muted">
           We're building a platform where ideas,
           opportunities, education, and creativity meet.
