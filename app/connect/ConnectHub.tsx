@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import ProfileEditor from './ProfileEditor'
 
 const opportunities = [
   {
@@ -12,7 +13,7 @@ const opportunities = [
     organization: 'Sample Startup',
     location: 'Remote',
     description:
-      'A sample early-stage startup is looking for someone interested in collaborating on a website.',
+      'A sample startup is looking for someone interested in collaborating on a website.',
   },
   {
     id: 2,
@@ -71,8 +72,10 @@ export default function ConnectHub() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(storageKey)
+
       if (stored) {
         const parsed: unknown = JSON.parse(stored)
+
         if (Array.isArray(parsed)) {
           setSaved(
             parsed.filter(
@@ -243,6 +246,8 @@ export default function ConnectHub() {
         </div>
       </div>
 
+      <ProfileEditor />
+
       <div style={{ marginTop: 28 }}>
         <Link
           href="/dashboard"
@@ -254,4 +259,3 @@ export default function ConnectHub() {
     </div>
   )
 }
-
