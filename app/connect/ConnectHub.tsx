@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import ProfileEditor from './ProfileEditor'
+import ProfessionalDirectory from './ProfessionalDirectory'
 
 const opportunities = [
   {
@@ -41,24 +42,6 @@ const opportunities = [
     location: 'Online',
     description:
       'Example collaboration to organize learning sessions and educational resources.',
-  },
-]
-
-const professionals = [
-  {
-    name: 'Alex Morgan',
-    role: 'Web Developer',
-    skills: 'React • Websites • UI Design',
-  },
-  {
-    name: 'Jordan Lee',
-    role: 'Graphic Designer',
-    skills: 'Branding • Social Media • Illustration',
-  },
-  {
-    name: 'Sam Taylor',
-    role: 'Business Founder',
-    skills: 'Entrepreneurship • Marketing • Strategy',
   },
 ]
 
@@ -220,31 +203,7 @@ export default function ConnectHub() {
         </div>
       )}
 
-      <div style={{ marginTop: 32 }}>
-        <h3>Discover Professionals</h3>
-
-        <p className="muted">
-          Example profiles for demonstration only.
-        </p>
-
-        <div className="dashboard-grid">
-          {professionals.map((person) => (
-            <div className="card" key={person.name}>
-              <div className="eyebrow">
-                PROFESSIONAL PROFILE
-              </div>
-
-              <h3>{person.name}</h3>
-
-              <p className="lead">{person.role}</p>
-
-              <p className="muted">
-                {person.skills}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ProfessionalDirectory />
 
       <ProfileEditor />
 
